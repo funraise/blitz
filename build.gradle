@@ -1,0 +1,145 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+    }
+}
+
+apply plugin: 'java'
+apply plugin: 'maven'
+apply plugin: 'maven-publish'
+apply plugin: 'ivy-publish'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+group = 'io.funraise.dm.util'
+version = '0.5.0'
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+
+dependencies {
+    compile("ma.glasnost.orika:orika-core:1.5.2")
+    compile("commons-beanutils:commons-beanutils:1.9.3")
+    compile("org.reflections:reflections:0.9.11")
+    compile("com.google.inject:guice:4.1.0")
+    compile("org.apache.commons:commons-lang3:3.0")
+    testCompile group: 'org.testng', name: 'testng', version: '6.13.1'
+    testCompile group: 'org.slf4j', name: 'slf4j-simple', version : '1.7.25'
+}
+
+test {
+    useTestNG()
+}
+
+task sourcesJar(type: Jar, dependsOn:classes) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+artifacts {
+    archives sourcesJar
+}
+
+wrapper {
+    gradleVersion = '3.1'
+}
+
+
+publishing {
+    publications {
+        blitz(MavenPublication) {
+            from components.java
+            groupId project.group
+            artifactId project.name
+            version version
+
+            artifact sourcesJar {
+                classifier "sources"
+            }
+            artifact javadocJar {
+                classifier "javadoc"
+            }
+
+            pom.withXml {
+                asNode().children().last() + {
+                    resolveStrategy = Closure.DELEGATE_FIRST
+                    name project.name
+                    description project.description
+                    url 'https://github.com/funraise/blitz'
+                    scm {
+                        url 'https://github.com/funraise/blitz'
+                        connection 'https://github.com/funraise/blitz'
+                        developerConnection 'https://github.com/funraise/blitz'
+                    }
+                    licenses {
+                        license {
+                            name 'MIT'
+                            url 'https://raw.githubusercontent.com/funraise/blitz/main/LICENSE'
+                            distribution 'repo'
+                        }
+                    }
+                    developers {
+                        developer {
+                            id 'jmswenski'
+                            name 'Jason Swenski'
+                        }
+                    }
+                }
+
+                //Bug in maven-publish plugin changes scope to runtime instead of compile
+                //https://discuss.gradle.org/t/maven-publish-plugin-generated-pom-making-dependency-scope-runtime/7494
+                asNode().dependencies.'*'.findAll() {
+                    it.scope.text() == 'runtime' && project.configurations.compile.allDependencies.find { dep ->
+                        dep.name == it.artifactId.text()
+                    }
+                }.each { it.scope*.value = 'compile'}
+            }
+        }
+    }
+}
+
+uploadArchives {
+    repositories {
+        ivy {
+            ivyPattern "${System.getenv('HOME')}/.ivy2/local/${project.group}/${project.name}/${project.version}/ivys/ivy.xml"
+            artifactPattern "${System.getenv('HOME')}/.ivy2/local/${project.group}/${project.name}/${project.version}/xmls/ivy.xml"
+        }
+    }
+}
+
+// all publish tasks depend on the build task
+tasks.withType(PublishToMavenRepository) {
+    dependsOn build
+}
+
+
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+}
+
+artifacts {
+    archives sourcesJar
+    archives javadocJar
+}
+
+jar {
+    from "LICENSE"
+    manifest {
+        attributes(
+                "Specification-Title": project.name,
+                "Specification-Version": project.version,
+                "Implementation-Version": project.version,
+        )
+    }
+}
